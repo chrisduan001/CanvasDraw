@@ -1,9 +1,11 @@
 package com.example.chris.canvasdraw.view
 
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
+import android.view.animation.LinearInterpolator
 import com.example.chris.canvasdraw.model.Coordinates
 import com.example.chris.canvasdraw.model.ClockPoints
 import com.example.chris.canvasdraw.model.TimeMark
@@ -18,6 +20,7 @@ const val maxDegrees = 360
 const val intervalsCount = 12
 const val minRotationAngle = maxDegrees / 60
 const val intervalAngle = maxDegrees / intervalsCount
+const val clockTickAnimationTime = 100L
 class ClockView: View {
     private lateinit var secondsTickerPaint: Paint
     private lateinit var minutesTickerPaint: Paint
@@ -35,8 +38,9 @@ class ClockView: View {
     private var finalWidth = 0
     private var finalHeight = 0
     private var radius = 0
-    private var toRotationAngle = -offsetIntervalAngle
-    private var fromRotationAngle = 0
+    private var nextTickerAngle = 0
+    private var currentTickerAngle = 0
+
     private var minutesCounter = 0
     private var secondsCounter = 0
 
@@ -155,25 +159,7 @@ class ClockView: View {
         val rect = RectF(16f, 16f, finalWidth.toFloat() - 16, finalHeight.toFloat() - 16)
         clockCoverPath.arcTo(rect, minDegrees.toFloat(), (maxDegrees - 1).toFloat(), true)
 
-        //set point to 12
-        var rotation = getRadianAngle(-offsetIntervalAngle + 15)
-
-        //set up second ticker
-        val secStartCoord = Coordinates(clockCenterX.toInt(), clockCenterY.toInt())
-        val secEndCoord = Coordinates(
-                (clockCenterX + ((radius - 50) * Math.cos(rotation))).toInt(),
-                (clockCenterY + ((radius - 50) * Math.sin(rotation))).toInt()
-        )
-        secondsTicker = ClockPoints(secStartCoord, secEndCoord)
-
-        //set up minute ticker
-        rotation = getRadianAngle(-offsetIntervalAngle)
-        val hourStartCoord = Coordinates(clockCenterX.toInt(), clockCenterY.toInt())
-        val hourEndCoord = Coordinates(
-                (clockCenterX + ((radius - 70) * Math.cos(rotation))).toInt(),
-                (clockCenterY + ((radius - 70) * Math.sin(rotation))).toInt()
-        )
-        minutesTicker = ClockPoints(hourStartCoord, hourEndCoord)
+        setTickerPos(-offsetIntervalAngle, -offsetIntervalAngle)
 
         TimeTextPaint.textSize = 0.08f * finalWidth
 
@@ -182,21 +168,21 @@ class ClockView: View {
                 val rotationRadian = getRadianAngle(-offsetIntervalAngle + intervalAngle + (i * intervalAngle))
 
                 val startCoord = Coordinates(
-                        (clockCenterX + ((radius - 16) * Math.cos(rotationRadian))).toInt(),
-                        (clockCenterY + ((radius - 16) * Math.sin(rotationRadian))).toInt()
+                        getXPoint(radius - 16, rotationRadian).toInt(),
+                        getYPoint( radius - 16, rotationRadian).toInt()
                 )
 
                 val endCoord = Coordinates(
-                        (clockCenterX + ((radius - 26) * Math.cos(rotationRadian))).toInt(),
-                        (clockCenterY + ((radius - 26) * Math.sin(rotationRadian))).toInt()
+                        getXPoint(radius - 26, rotationRadian).toInt(),
+                        getYPoint(radius - 26, rotationRadian).toInt()
                 )
 
                 val clockPoints = ClockPoints(startCoord, endCoord)
                 val time = (i + 1).toString()
                 val timePos = Coordinates(
-                        ((clockCenterX + ((radius - 50) * Math.cos(rotationRadian)))
+                        (getXPoint(radius - 50, rotationRadian)
                                 - (TimeTextPaint.measureText(time) / 2)).toInt(),//center of the text x
-                        ((clockCenterY + ((radius - 50) * Math.sin(rotationRadian)))
+                        (getYPoint(radius - 50, rotationRadian)
                                 - ((TimeTextPaint.descent() + TimeTextPaint.ascent()) / 2)).toInt() //center of the text y
                 )
 
@@ -205,8 +191,57 @@ class ClockView: View {
         }
     }
 
+    private fun setTickerPos(secondAngle: Int, minuteAngle: Int) {
+        //set point to 12
+        val rotationSecond = getRadianAngle(secondAngle)
+        val rotationMinute = getRadianAngle(minuteAngle)
+
+        //set up second ticker
+        val secStartCoord = Coordinates(clockCenterX.toInt(), clockCenterY.toInt())
+        val secEndCoord = Coordinates(
+                getXPoint(radius - 50, rotationSecond).toInt(),
+                getYPoint( radius - 50, rotationSecond).toInt()
+        )
+        secondsTicker = ClockPoints(secStartCoord, secEndCoord)
+
+        //set up minute ticker
+        val minuteStartCoord = Coordinates(clockCenterX.toInt(), clockCenterY.toInt())
+        val minuteEndCoord = Coordinates(
+                getXPoint(radius - 70, rotationMinute).toInt(),
+                getYPoint( radius - 70, rotationMinute).toInt()
+        )
+        minutesTicker = ClockPoints(minuteStartCoord, minuteEndCoord)
+    }
+
     private fun getRadianAngle(angle: Int): Double {
         return angle * (Math.PI /  180)
     }
 
+    private fun getXPoint(radius: Int, angle: Double): Double {
+        return clockCenterX + (radius * Math.cos(angle))
+    }
+
+    private fun getYPoint(radius: Int, angle: Double): Double {
+        return clockCenterY + (radius * Math.sin(angle))
+    }
+
+    fun tick(seconds: Int) {
+        nextTickerAngle = seconds * minRotationAngle - offsetIntervalAngle
+
+        val animator = ValueAnimator.ofInt(currentTickerAngle, nextTickerAngle)
+        animator.duration = clockTickAnimationTime
+        animator.interpolator = LinearInterpolator()
+        animator.addUpdateListener {
+            setTickerPos(nextTickerAngle, -offsetIntervalAngle)
+            invalidate()
+        }
+
+        currentTickerAngle = if (nextTickerAngle >= maxDegrees) minDegrees else nextTickerAngle
+        animator.start()
+    }
+
+    fun reset() {
+        setTickerPos(-offsetIntervalAngle, -offsetIntervalAngle)
+        invalidate()
+    }
 }
